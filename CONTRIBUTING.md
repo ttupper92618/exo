@@ -347,6 +347,9 @@ pairing service without constructing a Node. Its local lifetime, protected QR,
 watchdog, tests and source-pinned schema validator are documented in
 [Isolated operator workload fixture](website/docs/operator-workload-fixture.md).
 It is not an observed workload profile or relay capacity result.
+The explicit programmatic public-rehearsal hook requires a separately reviewed
+bounded, independently expiring ingress controller with verified cleanup; no CLI
+enables it. Its run-bound hostname gate does not attest provider ownership.
 `bench/observe_operator_workload.py` adds fixed-vocabulary flow controls and a
 bounded aggregate recorder pipe. The same contract documents artifact pins,
 opt-in recorder tests, measurement boundaries, and physical-device prerequisites.

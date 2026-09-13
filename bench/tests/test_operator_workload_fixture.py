@@ -30,10 +30,12 @@ from bench.operator_fixture_observer import FixtureObserver, ObservationEvent
 from bench.operator_workload_fixture import (
     FixtureLeaseExpiredError,
     FixtureSettings,
+    PublicFixtureIngress,
     copy_verified_fixture_binary,
     fixture_lease,
     isolated_fixture,
     validate_private_fixture_origin,
+    validate_public_fixture_origin,
     verify_binary,
 )
 from skulk.operator.pairing import pairing_signature_message
@@ -147,6 +149,96 @@ async def test_ingress_is_closed_on_startup_failure(
         async with isolated_fixture(settings, private_ingress=ingress):
             pytest.fail("invalid ingress must not reach fixture readiness")
     assert closed
+
+
+def test_public_fixture_origin_is_bound_to_its_run() -> None:
+    """Public opt-in cannot reuse an arbitrary relay or ambiguous URL."""
+    run_id = "a" * 32
+    origin = f"wss://rehearsal-{run_id}.example.com"
+    assert validate_public_fixture_origin(origin, run_id) == origin
+    for invalid in (
+        origin.replace("wss://", "ws://"),
+        origin + "/",
+        origin + ":443",
+        origin + "?query",
+        origin + "#fragment",
+        origin + "\n",
+        origin.replace("example.com", "test.ts.net"),
+        origin.replace("example.com", "-bad.example.com"),
+        origin.replace(run_id, "b" * 32),
+        "wss://production.example.com",
+        origin.replace("wss://", "wss://user@"),
+    ):
+        with pytest.raises(ValueError):
+            validate_public_fixture_origin(invalid, run_id)
+    for invalid_id in ("", "a" * 31, "A" * 32, "g" * 32):
+        with pytest.raises(ValueError, match="run identifier"):
+            validate_public_fixture_origin(origin, invalid_id)
+
+
+@pytest.mark.parametrize("changed_origin", [False, True])
+async def test_public_ingress_closes_after_partial_startup(
+    tmp_path: Path, changed_origin: bool
+) -> None:
+    """A changed advertised origin and failed provisioning both reap ingress."""
+    from collections.abc import AsyncIterator
+
+    binary = tmp_path / "relay"
+    binary.write_bytes(b"#!/bin/sh\nexit 1\n")
+    binary.chmod(0o700)
+    settings = FixtureSettings(
+        relay_binary=binary,
+        relay_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
+    )
+    origin = f"wss://rehearsal-{'a' * 32}.example.com"
+    closed = False
+
+    @asynccontextmanager
+    async def ingress(port: int) -> AsyncIterator[str]:
+        nonlocal closed
+        assert 0 < port < 65536
+        try:
+            yield "wss://production.example.com" if changed_origin else origin
+        finally:
+            closed = True
+
+    expected = ValueError if changed_origin else RuntimeError
+    message = "origin changed" if changed_origin else "provisioning failed"
+    with pytest.raises(expected, match=message):
+        async with isolated_fixture(
+            settings,
+            public_ingress=PublicFixtureIngress("a" * 32, origin, ingress),
+        ):
+            pytest.fail("partial startup must not become readiness")
+    assert closed
+
+
+@pytest.mark.parametrize("both_ingresses", [False, True])
+async def test_public_ingress_preflight_precedes_effects(
+    tmp_path: Path, both_ingresses: bool
+) -> None:
+    """Conflicting ingress and excessive leases fail before opening resources."""
+    from collections.abc import AsyncIterator
+
+    @asynccontextmanager
+    async def ingress(port: int) -> AsyncIterator[str]:
+        pytest.fail("invalid configuration must not open ingress")
+        yield str(port)
+
+    settings = FixtureSettings(
+        relay_binary=tmp_path / "nonexistent",
+        relay_sha256="0" * 64,
+        lifetime_seconds=3600 if both_ingresses else 3601,
+    )
+    with pytest.raises(ValueError, match="one ingress and a one-hour lease"):
+        async with isolated_fixture(
+            settings,
+            private_ingress=ingress if both_ingresses else None,
+            public_ingress=PublicFixtureIngress(
+                "a" * 32, f"wss://rehearsal-{'a' * 32}.example.com", ingress
+            ),
+        ):
+            pytest.fail("invalid configuration must not start")
 
 
 def _base64url(value: bytes) -> str:

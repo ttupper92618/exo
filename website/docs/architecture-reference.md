@@ -1234,6 +1234,10 @@ rust/                   # libp2p (networking), PyO3 bindings, system_custodian
 - Real auth/gateway: generated encrypted authority, signed version-two connector,
   TLS 1.3, scoped canonical authorization; no production configuration accepted.
 - Generated API: `bench/operator_fixture_app.py`; bounded input, fixed reads/SSE/PCM.
+- Public rehearsal: explicit `PublicFixtureIngress` on `isolated_fixture` only;
+  run-bound WSS hostname, at most one hour, mutually exclusive with private ingress.
+  Controller must enforce bounded exposure, independent expiry and verified cleanup;
+  naming validation does not attest effects. No CLI opt-in or production target.
 - Local relay lifetime: `bench/operator_fixture_lease.py`; independent expiry and
   parent-EOF watchdog; normal runner teardown removes temporary authority/QR files.
 - Schema validation: `bench/validate_operator_fixture.cjs`; exact app source commit
