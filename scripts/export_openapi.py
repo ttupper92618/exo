@@ -8,6 +8,8 @@ from pathlib import Path
 os.environ.setdefault("SKULK_HOME", ".skulk-docs-home")
 
 from skulk.api.main import API
+from skulk.api.operator_auth import create_operator_auth_router
+from skulk.operator.pairing import OperatorPairingService
 from skulk.shared.types.common import NodeId
 from skulk.utils.channels import channel
 
@@ -23,12 +25,13 @@ REDOC_BUNDLE_SOURCE = (
 
 
 def build_docs_api() -> API:
+    """Describe all HTTP contracts without initializing an operator authority."""
     command_sender, _ = channel()
     download_sender, _ = channel()
     _, event_receiver = channel()
     _, election_receiver = channel()
 
-    return API(
+    api = API(
         NodeId("docs-node"),
         port=52415,
         event_receiver=event_receiver,
@@ -38,6 +41,13 @@ def build_docs_api() -> API:
         enable_event_log=False,
         mount_dashboard=False,
     )
+    # The gateway is optional at runtime, but its routes must still appear in
+    # published API documentation. Router construction does not read credentials
+    # or initialize keys; no requests are dispatched by this exporter.
+    api.app.include_router(
+        create_operator_auth_router(OperatorPairingService.from_default_paths())
+    )
+    return api
 
 
 def _hoist_defs(schema: dict) -> dict:

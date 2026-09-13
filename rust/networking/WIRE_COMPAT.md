@@ -33,6 +33,15 @@ bindings while `versionStatus` reported "consistent".
 
 ## Entries (newest first)
 
+- **wire-neutral** (2026-09-12): bound-listener queries read `swarm.listeners()`
+  and `session.info().locators()` through the local PyO3 boundary. The new
+  `ToSwarm::ListenAddresses` variant stays on an in-process channel; it is not
+  serialized onto the network. No protocols, topics, framing, namespace/key
+  derivation, connection policy or session configuration change, so
+  `NETWORK_VERSION` remains v0.0.2. Bindings advance to 0.2.5 so ordinary
+  upgrades rebuild the Python-visible methods instead of retaining a cached
+  wheel without them.
+
 - **wire-neutral** (2026-07-24): `ZenohSession` gains `connected_peer_count()`,
   a read-only introspection of the local session's live peer transports via
   `session.info().peers_zid()`, exposed to Python for data-plane isolation

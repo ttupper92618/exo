@@ -6,6 +6,34 @@ Thank you for your interest in contributing to Skulk! Skulk is maintained by [Fo
 
 ## Getting Started
 
+Managed plugin adapter work belongs in `src/skulk/extensions/managed.py`; keep
+provider implementations and their dependency environments outside Skulk.
+Use isolated test state for owner connection records, never production setup.
+The optional cached discovery contract and local registration format are documented
+in [Extensions](website/docs/extensions.md#separately-supervised-plugin-owners).
+Generic offline installer changes belong in `extensions/runtime_artifacts.py`,
+`runtime_files.py`, `runtime_integrity.py`, `runtime_install.py` and
+`runtime_selection.py`. Exercise them with synthetic signed
+artifacts and empty protected test roots; never install test dependencies into
+the Skulk environment or reuse production operation journals.
+The `skulk-plugin-service setup` command creates a separate nonroot system service;
+do not run it against production during development checks. Unit templates and
+setup recovery tests belong alongside `service_setup.py` and the standalone
+`service_registration.py` helper, with OS effects injected into isolated fixtures.
+Validate real LaunchDaemon/systemd behavior and reboot recovery on the explicitly
+assigned qualification host before claiming unattended installation support.
+Guided terminal installation lives in `extensions/terminal_install.py`. Its terminal
+effects are injectable; test the complete workflow against real manager IPC and
+synthetic signed artifacts, including disconnects, hidden credentials and distinct
+owner decisions. Keep plugin-specific setup and approval policy out of this module.
+
+Declarative model resources live in `src/skulk/resources/` so the normal uv build
+includes them in both wheels and source distributions. The root `resources`
+symlink preserves existing source tooling and desktop bundle paths; edit the
+package files rather than creating a second copy. Verify packaging changes with
+`uv build` and an installation outside the checkout, without resource environment
+overrides. A successful editable install does not establish wheel completeness.
+
 To run Skulk from source:
 
 **Prerequisites:**
@@ -66,6 +94,7 @@ The Skulk dashboard is a React + TypeScript + styled-components app in `dashboar
 - `src/components/chat/` — ChatForm, ChatMessages, ChatModelSelector
 - `src/stores/` — Zustand stores (chatStore, uiStore) with localStorage/sessionStorage persistence
 - `src/hooks/` — useClusterState, useConfig, useModelPicker
+- `src/auth/` — Browser operator pairing and in-memory credential transport; its public protocol fixtures are checked against Python pairing proofs. Credentials must bypass Redux and browser persistence.
 - `e2e/` — Explicit Playwright qualification against a running Skulk dashboard
 
 To run the dashboard in dev mode:
@@ -439,3 +468,20 @@ If you find a bug or have a feature request, please open an issue on GitHub with
 ## Questions?
 
 Open an issue or discussion on the [Skulk repository](https://github.com/foxlight-foundation/Skulk).
+
+
+Managed plugin service development uses `skulk-plugin-service setup` for the
+explicit local system installation and `skulk-plugin-service manage` for subsequent
+typed operations through its generated connection. Source configuration, release
+inspection and durable download/staging are documented in the
+[API guide](website/docs/api-guide.md#private-release-inspection-and-installation).
+Use signed fixture feeds for tests; do not put private feed tokens in shell
+arguments, committed fixtures or ordinary diagnostic output.
+
+
+Optional installed-plugin local setup uses the fixed signed `__setup__.py`
+entrypoint and `skulk-plugin-service setup-plugin <managed-id> -- <setup-fields>`.
+Generic path discovery, runtime verification and inherited installation fencing
+live in `extensions/local_setup.py`; provider-specific prompts stay in the plugin.
+Tests cover actual offline runtime execution and terminal/fence inheritance without
+performing privileged OS registration.

@@ -164,7 +164,9 @@ async def invoke_steward_tool(
         from pydantic import TypeAdapter
 
         payload = TypeAdapter(dict[str, JsonValue]).validate_json(raw)
-        async with asyncio.timeout(5):
+        # Inert proposal preparation may perform bounded catalog and placement
+        # reads. Give that work time to finish; it still receives no approval.
+        async with asyncio.timeout(20 if binding.tool.mode == "proposal" else 5):
             current = await collect_steward_tools(
                 [binding.provider], context, proposals_allowed=proposals_allowed
             )

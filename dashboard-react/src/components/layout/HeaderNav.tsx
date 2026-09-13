@@ -7,6 +7,7 @@ import {
   FiSun,
   FiMoon,
   FiLink,
+  FiPackage,
 } from 'react-icons/fi';
 import { MdHub, MdAutoAwesome } from 'react-icons/md';
 import { VscBug } from 'react-icons/vsc';
@@ -25,6 +26,7 @@ export type NavRoute =
   | 'chat'
   | 'steward'
   | 'integrations'
+  | 'plugins'
   | 'operator';
 
 export interface HeaderNavProps {
@@ -470,6 +472,9 @@ export function HeaderNav({
 
         <NavLink $active={activeRoute === 'integrations'} onClick={() => navigate('integrations')}>
           <IntegrationsIcon /> {t('header.nav.integrations', 'Integrations')}
+        </NavLink>
+        <NavLink $active={activeRoute === 'plugins'} onClick={() => navigate('plugins')}>
+          <FiPackage /> {t('header.nav.plugins', 'Plugins')}
         </NavLink>
         </>)}
 

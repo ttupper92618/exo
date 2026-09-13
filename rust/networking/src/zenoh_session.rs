@@ -76,6 +76,17 @@ pub struct ZenohSession {
 }
 
 impl ZenohSession {
+    /// Return actual bound session locators without changing connectivity.
+    pub async fn listen_addresses(&self) -> Vec<String> {
+        self.session
+            .info()
+            .locators()
+            .await
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
     /// Open a Zenoh `peer` session with gossip on and configured discovery.
     pub async fn open(config: ZenohConfig) -> AnyResult<Self> {
         let mut zconfig = zenoh::Config::default();

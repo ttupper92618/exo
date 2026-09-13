@@ -21,7 +21,15 @@ from skulk.shared.types.common import NodeId
 from skulk.shared.types.events import IndexedEvent
 from skulk.utils.channels import channel
 
-SPA_ROUTES = ("/cluster", "/model-store", "/chat", "/operator")
+SPA_ROUTES = (
+    "/cluster",
+    "/model-store",
+    "/chat",
+    "/steward",
+    "/integrations",
+    "/plugins",
+    "/operator",
+)
 
 
 @contextmanager

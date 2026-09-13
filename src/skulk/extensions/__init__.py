@@ -22,11 +22,38 @@ from skulk.extensions.capabilities import (
     CapabilityIoMode,
     descriptor_revision,
 )
+from skulk.extensions.configuration import (
+    ConfigurableNode,
+    ConfigurationMutation,
+    ConfigurationResult,
+    NodeConfiguration,
+    NodeConfigurationProvider,
+)
+from skulk.extensions.credentials import (
+    CredentialMutation,
+    CredentialStatus,
+    NodeCredentialProvider,
+    NodeCredentials,
+)
 from skulk.extensions.loader import (
     ENTRY_POINT_GROUP,
     LoadedExtensions,
     load_extensions,
     resolve_skulk_version,
+)
+from skulk.extensions.proposal_actions import (
+    NodeProposalActionsProvider,
+    ProposalApproval,
+    ProposalOperation,
+    ProposalOperationId,
+)
+from skulk.extensions.proposal_review import (
+    NodeProposalReviewProvider,
+    ProposalField,
+    ProposalPage,
+    ProposalReference,
+    ProposalReview,
+    ProposalSummary,
 )
 from skulk.extensions.speech import (
     REALTIME_STT_CAPABILITY_DESCRIPTOR,
@@ -66,6 +93,7 @@ from skulk.extensions.types import (
     ChatMiddleware,
     ChatResponseSummary,
     DescribeNode,
+    DynamicCapabilityProvider,
     EmbedTexts,
     ExtensionContext,
     ReadClusterTelemetry,
@@ -86,8 +114,28 @@ from skulk.extensions.vad import (
 from skulk.extensions.validation import validate_against_schema
 
 __all__ = [
+    "DynamicCapabilityProvider",
+    "ConfigurableNode",
+    "ConfigurationMutation",
+    "ConfigurationResult",
+    "NodeConfiguration",
+    "NodeConfigurationProvider",
+    "CredentialMutation",
+    "CredentialStatus",
+    "NodeCredentials",
+    "NodeCredentialProvider",
     "StewardTool",
     "StewardToolProvider",
+    "NodeProposalReviewProvider",
+    "NodeProposalActionsProvider",
+    "ProposalApproval",
+    "ProposalOperation",
+    "ProposalOperationId",
+    "ProposalField",
+    "ProposalPage",
+    "ProposalReference",
+    "ProposalReview",
+    "ProposalSummary",
     "DEFAULT_CALL_TIMEOUT_SECONDS",
     "ENTRY_POINT_GROUP",
     "MAX_CALL_PAYLOAD_BYTES",

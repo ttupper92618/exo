@@ -34,7 +34,7 @@ def _base64url(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
 
 
-def _paired_service(tmp_path: Path) -> tuple[OperatorPairingService, PairingExchangeResponse]:
+def paired_service(tmp_path: Path) -> tuple[OperatorPairingService, PairingExchangeResponse]:
     """Return a pairing service and one fully scoped operator credential."""
 
     provider = LocalFileAuthorityKeyProvider(tmp_path / "authority-key.bin")
@@ -78,7 +78,7 @@ def test_remote_listener_reuses_canonical_routes_and_requires_scoped_bearer(
 ) -> None:
     """Reads and mutations reach one app only after bearer validation."""
 
-    service, exchange = _paired_service(tmp_path)
+    service, exchange = paired_service(tmp_path)
     canonical = FastAPI()
 
     @canonical.get("/state")
@@ -123,7 +123,7 @@ def test_pairing_and_refresh_paths_remain_reachable_before_access_authentication
 ) -> None:
     """The relay boundary does not block its own pairing bootstrap routes."""
 
-    service, _ = _paired_service(tmp_path)
+    service, _ = paired_service(tmp_path)
     canonical = FastAPI()
 
     @canonical.post("/v1/auth/pairing-sessions/challenge")
@@ -149,7 +149,7 @@ def test_dashboard_invitation_management_is_never_relay_accessible(
 ) -> None:
     """Even a fully scoped device cannot reach the local dashboard authority."""
 
-    service, exchange = _paired_service(tmp_path)
+    service, exchange = paired_service(tmp_path)
     canonical = FastAPI()
 
     @canonical.post("/v1/auth/pairing-invitations")
@@ -181,7 +181,7 @@ def test_dashboard_invitation_management_is_never_relay_accessible(
 def test_remote_websocket_requires_an_operator_bearer(tmp_path: Path) -> None:
     """Canonical WebSockets share the same access-token boundary."""
 
-    service, exchange = _paired_service(tmp_path)
+    service, exchange = paired_service(tmp_path)
     canonical = FastAPI()
 
     @canonical.websocket("/v1/realtime")

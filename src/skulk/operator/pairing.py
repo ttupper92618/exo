@@ -25,6 +25,7 @@ from skulk.operator.authority import (
 )
 from skulk.operator.identity import ClusterPublicIdentity, create_cluster_identity
 from skulk.operator.key_provider import LocalFileAuthorityKeyProvider
+from skulk.operator.plugin_scopes import PLUGIN_SCOPES, PluginScope
 from skulk.operator.relay import (
     OperatorRelayConfiguration,
     OperatorRelayConfigurationRepository,
@@ -55,6 +56,9 @@ type OperatorScope = Literal[
     "chat:write",
     "operations:write",
     "devices:manage",
+    "plugins:read",
+    "plugins:manage",
+    "plugins:approve",
 ]
 
 _DEFAULT_SCOPES: tuple[OperatorScope, ...] = (
@@ -230,7 +234,9 @@ class PairingInvitationPackage(FrozenModel):
     exchange_url: AnyHttpUrl = Field(
         description="Direct or relayed URL serving the pairing exchange."
     )
-    invitation_id: UUID = Field(description="Public identifier used to manage the invitation.")
+    invitation_id: UUID = Field(
+        description="Public identifier used to manage the invitation."
+    )
     issued_at: datetime = Field(description="UTC creation time of the invitation.")
     expires_at: datetime = Field(description="UTC expiry of the invitation.")
     max_pairings: int = Field(
@@ -273,7 +279,9 @@ class PairingInvitationPackage(FrozenModel):
 
         lifetime = self.expires_at - self.issued_at
         if lifetime < timedelta(minutes=1) or lifetime > _MAXIMUM_INVITATION_LIFETIME:
-            raise ValueError("pairing invitation lifetime must be from one minute to 90 days")
+            raise ValueError(
+                "pairing invitation lifetime must be from one minute to 90 days"
+            )
         return self
 
     def as_url(self) -> str:
@@ -355,9 +363,7 @@ class PairingChallengeRequest(FrozenModel):
 class PairingChallengeResponse(FrozenModel):
     """Cluster challenge that the candidate device must sign."""
 
-    challenge: str = Field(
-        description="Unpadded URL-safe base64 random challenge."
-    )
+    challenge: str = Field(description="Unpadded URL-safe base64 random challenge.")
     expires_at: datetime = Field(description="UTC expiry of this pairing attempt.")
     attempt_id: UUID | None = Field(
         default=None,
@@ -394,7 +400,6 @@ class PairingExchangeRequest(FrozenModel):
         if (self.invitation_id is None) != (self.attempt_id is None):
             raise ValueError("invitation_id and attempt_id must be supplied together")
         return self
-
 
     @field_validator("invitation_id", "attempt_id", mode="before")
     @classmethod
@@ -512,6 +517,41 @@ class OperatorDevicesResponse(FrozenModel):
     )
 
 
+class PluginGrant(FrozenModel):
+    """Owner-visible explicit plugin privileges for one paired device."""
+
+    device_id: UUID = Field(description="Stable paired operator identity.")
+    device_name: str = Field(description="Owner-visible paired device name.")
+    revision: int = Field(ge=0, description="Revision fencing owner grant edits.")
+    scopes: tuple[PluginScope, ...] = Field(
+        description="Explicit privileges; empty for existing and newly paired devices."
+    )
+    active: bool = Field(description="False when the device credential is revoked.")
+
+
+class PluginGrantUpdate(FrozenModel):
+    """Replace only plugin privileges after an owner observes their revision."""
+
+    expected_revision: int = Field(ge=0, description="Last observed grant revision.")
+    scopes: tuple[PluginScope, ...] = Field(
+        max_length=3, description="Exact desired privileges; empty revokes all."
+    )
+
+    @field_validator("scopes", mode="before")
+    @classmethod
+    def _wire_scope_array(cls, value: object) -> object:
+        """Accept a JSON array while retaining strict validation of each scope."""
+        return tuple(cast(list[object], value)) if isinstance(value, list) else value
+
+    @field_validator("scopes")
+    @classmethod
+    def _unique_scopes(cls, value: tuple[PluginScope, ...]) -> tuple[PluginScope, ...]:
+        """Reject duplicate privileges and persist a canonical order."""
+        if len(set(value)) != len(value):
+            raise ValueError("plugin scopes must be unique")
+        return tuple(scope for scope in PLUGIN_SCOPES if scope in value)
+
+
 class _StoredPairingSession(FrozenModel):
     """Encrypted durable state for one pairing capability and resulting device."""
 
@@ -529,6 +569,7 @@ class _StoredPairingSession(FrozenModel):
     refresh_token_hash: str | None = None
     refresh_token_expires_at: datetime | None = None
     scopes: tuple[OperatorScope, ...] = ()
+    plugin_grant_revision: int = 0
 
 
 class _StoredPairingInvitation(FrozenModel):
@@ -560,6 +601,7 @@ class _StoredPairingAttempt(FrozenModel):
     refresh_token_hash: str | None = None
     refresh_token_expires_at: datetime | None = None
     scopes: tuple[OperatorScope, ...] = ()
+    plugin_grant_revision: int = 0
 
 
 type _StoredDeviceCredential = _StoredPairingSession | _StoredPairingAttempt
@@ -777,8 +819,8 @@ class OperatorPairingService:
 
         self._store = store
         self._key_provider = key_provider
-        self._relay_repository = relay_repository or OperatorRelayConfigurationRepository(
-            store
+        self._relay_repository = (
+            relay_repository or OperatorRelayConfigurationRepository(store)
         )
         self._now = now
 
@@ -794,7 +836,9 @@ class OperatorPairingService:
             relay_repository=OperatorRelayConfigurationRepository(store),
         )
 
-    def initialize_gateway(self, cluster_name: str = "Cluster") -> ClusterPublicIdentity:
+    def initialize_gateway(
+        self, cluster_name: str = "Cluster"
+    ) -> ClusterPublicIdentity:
         """Load or create the single designated gateway identity.
 
         Args:
@@ -890,8 +934,7 @@ class OperatorPairingService:
         )
         if (
             package.version == 2
-            and len(package.as_url().encode("utf-8"))
-            > _MAXIMUM_RELAY_PAIRING_URL_BYTES
+            and len(package.as_url().encode("utf-8")) > _MAXIMUM_RELAY_PAIRING_URL_BYTES
         ):
             raise PairingPackageTooLargeError(
                 "relay pairing package exceeds the supported QR size"
@@ -932,9 +975,13 @@ class OperatorPairingService:
         """
 
         if lifetime < timedelta(minutes=1) or lifetime > _MAXIMUM_INVITATION_LIFETIME:
-            raise ValueError("pairing invitation lifetime must be from one minute to 90 days")
+            raise ValueError(
+                "pairing invitation lifetime must be from one minute to 90 days"
+            )
         if not 1 <= max_pairings <= _MAXIMUM_INVITATION_PAIRINGS:
-            raise ValueError("pairing invitation max_pairings must be from one through 20")
+            raise ValueError(
+                "pairing invitation max_pairings must be from one through 20"
+            )
 
         relay_configuration = self._relay_repository.load()
         use_relay = exchange_url is None
@@ -1224,9 +1271,7 @@ class OperatorPairingService:
                 public_key.verify(
                     signature,
                     pairing_invitation_signature_message(
-                        cluster_id=UUID(
-                            str(self._store.cluster_identity().cluster_id)
-                        ),
+                        cluster_id=UUID(str(self._store.cluster_identity().cluster_id)),
                         invitation_id=invitation_id,
                         nonce=request.nonce,
                         attempt_id=attempt_id,
@@ -1316,7 +1361,9 @@ class OperatorPairingService:
                     continue
                 attempt = _StoredPairingAttempt.model_validate_json(encoded_payload)
             except ValueError as exc:
-                raise PairingError("stored pairing invitation state is invalid") from exc
+                raise PairingError(
+                    "stored pairing invitation state is invalid"
+                ) from exc
             attempts_by_invitation.setdefault(attempt.invitation_id, []).append(
                 (record.record_id, attempt, record.commit_index)
             )
@@ -1372,12 +1419,9 @@ class OperatorPairingService:
             self._load_device_session(request.device_id)
         )
         self._require_active_device(session)
-        if (
-            session.refresh_token_hash is None
-            or not compare_digest(
-                session.refresh_token_hash,
-                _opaque_digest(request.refresh_token),
-            )
+        if session.refresh_token_hash is None or not compare_digest(
+            session.refresh_token_hash,
+            _opaque_digest(request.refresh_token),
         ):
             raise OperatorCredentialInvalidError("refresh credential is invalid")
         if (
@@ -1459,6 +1503,65 @@ class OperatorPairingService:
             device_name=matched_session.device_name,
             scopes=matched_session.scopes,
         )
+
+    def plugin_grants(self) -> tuple[PluginGrant, ...]:
+        """Read explicit grants for the trusted owner control surface.
+
+        No bearer authorizes this service method by itself. HTTP callers must
+        pass the direct owner boundary before invoking it.
+        """
+        return tuple(
+            self._plugin_grant(session)
+            for _, _, session, _ in self._latest_device_sessions()
+            if session.device_id is not None and session.device_name is not None
+        )
+
+    @staticmethod
+    def _plugin_grant(session: _StoredDeviceCredential) -> PluginGrant:
+        if session.device_id is None or session.device_name is None:
+            raise PairingError("stored paired device is invalid")
+        return PluginGrant(
+            device_id=session.device_id,
+            device_name=session.device_name,
+            revision=session.plugin_grant_revision,
+            scopes=tuple(scope for scope in PLUGIN_SCOPES if scope in session.scopes),
+            active=session.state == "consumed",
+        )
+
+    def set_plugin_grant(
+        self, device_id: UUID, update: PluginGrantUpdate
+    ) -> PluginGrant:
+        """Persist an explicit owner grant without rotating or exposing tokens.
+
+        The encrypted credential append fences concurrent refresh, revocation
+        and grant changes. Existing access tokens immediately use this record;
+        neither an old token nor refresh can resurrect removed privileges.
+        """
+        record_type, record_id, session, commit_index = self._load_device_session(
+            device_id
+        )
+        self._require_active_device(session)
+        if session.plugin_grant_revision != update.expected_revision:
+            raise PairingSessionStateError(
+                "plugin grant changed; reload before editing"
+            )
+        scopes: tuple[OperatorScope, ...] = (
+            *(scope for scope in session.scopes if scope not in PLUGIN_SCOPES),
+            *update.scopes,
+        )
+        updated = session.model_copy(
+            update={
+                "scopes": scopes,
+                "plugin_grant_revision": session.plugin_grant_revision + 1,
+            }
+        )
+        self._append_device_credential(
+            record_type=record_type,
+            record_id=record_id,
+            credential=updated,
+            expected_record_commit_index=commit_index,
+        )
+        return self._plugin_grant(updated)
 
     def devices(self, access_token: str) -> OperatorDevicesResponse:
         """List safe paired-device projections for an authorized device.
@@ -1544,10 +1647,14 @@ class OperatorPairingService:
             ) from exc
         for record in reversed(records):
             identity = (record.record_type, record.record_id)
-            if record.record_type not in {
-                _PAIRING_RECORD_TYPE,
-                _PAIRING_ATTEMPT_RECORD_TYPE,
-            } or identity in seen:
+            if (
+                record.record_type
+                not in {
+                    _PAIRING_RECORD_TYPE,
+                    _PAIRING_ATTEMPT_RECORD_TYPE,
+                }
+                or identity in seen
+            ):
                 continue
             seen.add(identity)
             latest_records.append(identity)
@@ -1567,7 +1674,12 @@ class OperatorPairingService:
     ) -> tuple[str, str, _StoredDeviceCredential, int]:
         """Load the newest credential state for one stable device identity."""
 
-        for record_type, record_id, session, commit_index in self._latest_device_sessions():
+        for (
+            record_type,
+            record_id,
+            session,
+            commit_index,
+        ) in self._latest_device_sessions():
             if session.device_id == device_id:
                 return record_type, record_id, session, commit_index
         raise OperatorDeviceNotFoundError("paired device was not found")
@@ -1702,13 +1814,14 @@ class OperatorPairingService:
         if now >= invitation.expires_at:
             raise PairingSessionExpiredError("pairing invitation is expired")
         successful_pairings = sum(
-            attempt.state in {"consumed", "revoked"}
-            for _, attempt, _ in attempts
+            attempt.state in {"consumed", "revoked"} for _, attempt, _ in attempts
         )
         if successful_pairings >= invitation.max_pairings:
             raise PairingSessionExpiredError("pairing invitation is exhausted")
         if creating_attempt and len(attempts) >= _MAXIMUM_TOTAL_INVITATION_ATTEMPTS:
-            raise PairingSessionExpiredError("pairing invitation reached its attempt limit")
+            raise PairingSessionExpiredError(
+                "pairing invitation reached its attempt limit"
+            )
 
     def _invitation_summary(
         self,
@@ -1719,8 +1832,7 @@ class OperatorPairingService:
 
         now = self._now()
         successful_pairings = sum(
-            attempt.state in {"consumed", "revoked"}
-            for _, attempt, _ in attempts
+            attempt.state in {"consumed", "revoked"} for _, attempt, _ in attempts
         )
         active_attempts = sum(
             attempt.state == "challenged" and now < attempt.expires_at

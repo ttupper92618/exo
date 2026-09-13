@@ -1,5 +1,5 @@
 import styled from 'styled-components';
-import { FiSettings, FiDatabase, FiMessageSquare, FiSun, FiMoon, FiLink } from 'react-icons/fi';
+import { FiSettings, FiDatabase, FiMessageSquare, FiSun, FiMoon, FiLink, FiPackage } from 'react-icons/fi';
 import { MdHub, MdAutoAwesome } from 'react-icons/md';
 import { VscBug } from 'react-icons/vsc';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -141,6 +141,9 @@ export function MobileMenuSheet({ open, activeRoute, onNavigate, onOpenSettings,
         )}
         <MenuRow $active={activeRoute === 'integrations'} onClick={() => go('integrations')} tabIndex={open ? 0 : -1}>
           <FiLink size={18} /> {t('header.nav.integrations', 'Integrations')}
+        </MenuRow>
+        <MenuRow $active={activeRoute === 'plugins'} onClick={() => go('plugins')} tabIndex={open ? 0 : -1}>
+          <FiPackage size={18} /> {t('header.nav.plugins', 'Plugins')}
         </MenuRow>
         <Divider />
         <MenuRow

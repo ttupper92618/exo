@@ -35,7 +35,10 @@ from skulk.operator.pairing import (
     PairingSessionExpiredError,
     PairingSessionNotFoundError,
     PairingSessionStateError,
+    PluginGrant,
+    PluginGrantUpdate,
 )
+from skulk.operator.plugin_scopes import PluginScope
 from skulk.operator.relay import OperatorRelayUnavailableError
 
 _BEARER_CHALLENGE = {"WWW-Authenticate": "Bearer"}
@@ -82,7 +85,9 @@ async def _direct_dashboard_authority_request(
     would otherwise erase the real peer boundary.
     """
 
-    if any(name.lower() in _FORWARDED_REQUEST_HEADERS for name, _ in request.headers.raw):
+    if any(
+        name.lower() in _FORWARDED_REQUEST_HEADERS for name, _ in request.headers.raw
+    ):
         return False
     if request.headers.get("x-skulk-dashboard") != _DASHBOARD_REQUEST_HEADER:
         return False
@@ -234,6 +239,70 @@ def _raise_credential_http_error(exc: Exception) -> Never:
     raise exc
 
 
+async def authorize_plugin_request(
+    request: Request,
+    service: OperatorPairingService | None,
+    required_scope: PluginScope,
+    tailnet_peer_verifier: TailnetPeerVerifier = is_tailscale_peer,
+) -> str:
+    """Require direct owner authority or an explicitly scoped paired operator.
+
+    A presented bearer is always checked, never silently replaced by ambient
+    dashboard authority. Direct HTTP outside the verified owner transport is
+    refused; relay ingress has already authenticated its encrypted listener.
+    """
+    from skulk.api.operator_gateway import OPERATOR_GATEWAY_AUTHORIZED_SCOPE_KEY
+
+    authorization = request.headers.getlist("authorization")
+    if not authorization:
+        await _require_direct_dashboard_authority(request, tailnet_peer_verifier)
+        return "local-owner"
+    if len(authorization) != 1 or service is None:
+        raise HTTPException(status_code=401, detail="operator credential invalid")
+    try:
+        operator = await run_in_threadpool(
+            service.validate_access_token,
+            _require_bearer(authorization[0]),
+            required_scopes=(required_scope,),
+        )
+    except (
+        OperatorCredentialInvalidError,
+        OperatorCredentialExpiredError,
+        OperatorScopeError,
+        PairingGatewayNotInitializedError,
+    ) as exc:
+        _raise_credential_http_error(exc)
+    if (
+        request.scope.get(OPERATOR_GATEWAY_AUTHORIZED_SCOPE_KEY) is not True
+        and request.url.scheme != "https"
+        and not await _direct_dashboard_authority_request(
+            request, tailnet_peer_verifier
+        )
+    ):
+        raise HTTPException(
+            status_code=403, detail="plugin management requires protected transport"
+        )
+    return str(operator.device_id)
+
+
+async def authorize_plugin_owner_request(
+    request: Request,
+    tailnet_peer_verifier: TailnetPeerVerifier = is_tailscale_peer,
+) -> None:
+    """Reserve publisher trust and credential destinations for direct owner administration."""
+    from skulk.api.operator_gateway import OPERATOR_GATEWAY_AUTHORIZED_SCOPE_KEY
+
+    if (
+        request.headers.getlist("authorization")
+        or request.scope.get(OPERATOR_GATEWAY_AUTHORIZED_SCOPE_KEY) is True
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="this action requires direct owner authority without a paired credential",
+        )
+    await _require_direct_dashboard_authority(request, tailnet_peer_verifier)
+
+
 def create_operator_auth_router(
     service: OperatorPairingService,
     *,
@@ -253,6 +322,60 @@ def create_operator_auth_router(
     """
 
     router = APIRouter(prefix="/v1/auth", tags=["Authentication"])
+
+    @router.get(
+        "/plugin-grants",
+        response_model=tuple[PluginGrant, ...],
+        summary="List owner-controlled plugin grants",
+        description=(
+            "List explicit paired-device plugin privileges from the direct localhost "
+            "or verified Tailscale dashboard. This route is unavailable through relay "
+            "access and refuses any paired bearer, including on the direct listener. It does not expose credentials. Existing pairings have no plugin grants."
+        ),
+    )
+    async def list_plugin_grants(
+        request: Request, response: Response
+    ) -> tuple[PluginGrant, ...]:
+        """Return safe grant metadata only after verifying direct owner authority."""
+        await authorize_plugin_owner_request(request, tailnet_peer_verifier)
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            return await run_in_threadpool(service.plugin_grants)
+        except PairingGatewayNotInitializedError as exc:
+            _raise_pairing_gateway_http_error(exc)
+
+    @router.put(
+        "/plugin-grants/{device_id}",
+        response_model=PluginGrant,
+        summary="Replace one device's explicit plugin grants",
+        description=(
+            "Replace plugin read, management and approval grants after a direct owner "
+            "dashboard check and expected-revision comparison. An empty scope list "
+            "revokes every plugin grant immediately, including for existing access tokens. "
+            "A presented paired bearer is refused even with matching direct-owner origin headers. Remote operators cannot call this route or grant themselves privileges."
+        ),
+    )
+    async def replace_plugin_grant(
+        device_id: UUID,
+        payload: PluginGrantUpdate,
+        request: Request,
+        response: Response,
+    ) -> PluginGrant:
+        """Apply a revision-fenced grant without returning or rotating credentials."""
+        await authorize_plugin_owner_request(request, tailnet_peer_verifier)
+        response.headers["Cache-Control"] = "no-store"
+        try:
+            return await run_in_threadpool(service.set_plugin_grant, device_id, payload)
+        except OperatorDeviceNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except PairingSessionStateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (
+            PairingGatewayNotInitializedError,
+            OperatorCredentialInvalidError,
+            OperatorCredentialExpiredError,
+        ) as exc:
+            _raise_credential_http_error(exc)
 
     @router.post(
         _PAIRING_INVITATION_PATH,
@@ -316,7 +439,9 @@ def create_operator_auth_router(
             "relay gateway."
         ),
     )
-    async def list_pairing_invitations(request: Request) -> list[PairingInvitationSummary]:
+    async def list_pairing_invitations(
+        request: Request,
+    ) -> list[PairingInvitationSummary]:
         """List safe status for invitations created on this gateway."""
 
         await _require_direct_dashboard_authority(request, tailnet_peer_verifier)
@@ -336,7 +461,9 @@ def create_operator_auth_router(
             "dashboard over localhost or Tailscale and is never relay-accessible."
         ),
     )
-    async def revoke_pairing_invitation(invitation_id: UUID, request: Request) -> Response:
+    async def revoke_pairing_invitation(
+        invitation_id: UUID, request: Request
+    ) -> Response:
         """Revoke one invitation from the trusted direct gateway dashboard."""
 
         await _require_direct_dashboard_authority(request, tailnet_peer_verifier)

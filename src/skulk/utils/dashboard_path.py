@@ -4,12 +4,27 @@ from typing import cast
 
 
 def find_resources() -> Path:
-    resources = _find_resources_in_repo() or _find_resources_in_bundle()
+    """Return installed declarative resources, retaining source and bundle support.
+
+    Wheel resources live beside the imported Skulk package so installation does
+    not depend on a checkout or the process working directory. A missing payload
+    raises ``FileNotFoundError`` rather than silently using empty model metadata.
+    """
+    resources = (
+        _find_resources_in_package()
+        or _find_resources_in_repo()
+        or _find_resources_in_bundle()
+    )
     if resources is None:
         raise FileNotFoundError(
-            "Unable to locate resources. Did you clone the repo properly?"
+            "Unable to locate Skulk resources. Reinstall the complete Skulk package."
         )
     return resources
+
+
+def _find_resources_in_package() -> Path | None:
+    candidate = Path(__file__).resolve().parent.parent / "resources"
+    return candidate if candidate.is_dir() else None
 
 
 def _find_resources_in_repo() -> Path | None:

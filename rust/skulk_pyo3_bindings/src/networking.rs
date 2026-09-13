@@ -238,6 +238,18 @@ impl PyNetworkingHandle {
 
     // ---- Gossipsub management methods ----
 
+    /// Return actual bound listener addresses, including OS-assigned TCP ports.
+    async fn listen_addresses(&self) -> PyResult<Vec<String>> {
+        let (tx, rx) = oneshot::channel();
+        self.to_swarm
+            .send_py(ToSwarm::ListenAddresses { result_sender: tx })
+            .allow_threads_py()
+            .await?;
+        rx.allow_threads_py()
+            .await
+            .map_err(|_| PyErr::receiver_channel_closed())
+    }
+
     /// Subscribe to a `GossipSub` topic.
     ///
     /// Returns `True` if the subscription worked. Returns `False` if we were already subscribed.
@@ -371,6 +383,11 @@ impl PyZenohHandle {
         Ok(Self {
             session: Arc::new(session),
         })
+    }
+
+    /// Return actual bound data-plane locators without changing connectivity.
+    async fn listen_addresses(&self) -> PyResult<Vec<String>> {
+        Ok(self.session.listen_addresses().allow_threads_py().await)
     }
 
     /// Subscribe to a Zenoh key (topic). Idempotent.

@@ -29,6 +29,9 @@ const TELEMETRY_PROTOCOL_PREFIX: &str = "/skulk/telemetry/meshsub";
 // Uses oneshot senders to emulate function calling apis while avoiding requiring unique ownership
 // of the Swarm.
 pub enum ToSwarm {
+    ListenAddresses {
+        result_sender: oneshot::Sender<Vec<String>>,
+    },
     Unsubscribe {
         topic: String,
         result_sender: oneshot::Sender<bool>,
@@ -96,6 +99,10 @@ impl Swarm {
 
 fn on_message(swarm: &mut libp2p::Swarm<Behaviour>, message: ToSwarm) {
     match message {
+        ToSwarm::ListenAddresses { result_sender } => {
+            // Query the running swarm: the requested port may have been zero.
+            _ = result_sender.send(swarm.listeners().map(ToString::to_string).collect());
+        }
         ToSwarm::Subscribe {
             topic,
             result_sender,

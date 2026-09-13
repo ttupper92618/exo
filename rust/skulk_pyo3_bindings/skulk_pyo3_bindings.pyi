@@ -43,22 +43,26 @@ class MessageTooLargeError(builtins.Exception):
 @typing.final
 class NetworkingHandle:
     def __new__(cls, identity: Keypair, bootstrap_peers: typing.Optional[typing.Sequence[builtins.str]] = None, listen_port: builtins.int = 0) -> NetworkingHandle: ...
+    async def listen_addresses(self) -> builtins.list[builtins.str]:
+        r"""
+        Return actual bound listener addresses, including OS-assigned TCP ports.
+        """
     async def gossipsub_subscribe(self, topic: builtins.str) -> builtins.bool:
         r"""
         Subscribe to a `GossipSub` topic.
-        
+
         Returns `True` if the subscription worked. Returns `False` if we were already subscribed.
         """
     async def gossipsub_unsubscribe(self, topic: builtins.str) -> builtins.bool:
         r"""
         Unsubscribes from a `GossipSub` topic.
-        
+
         Returns `True` if we were subscribed to this topic. Returns `False` if we were not subscribed.
         """
     async def gossipsub_publish(self, topic: builtins.str, data: bytes) -> None:
         r"""
         Publishes a message with multiple topics to the `GossipSub` network.
-        
+
         If no peers are found that subscribe to this topic, throws `NoPeersSubscribedToTopicError` exception.
         """
     async def recv(self) -> PyFromSwarm: ...
@@ -82,7 +86,7 @@ class PyFromSwarm:
         @property
         def remote_tcp_port(self) -> builtins.int: ...
         def __new__(cls, peer_id: builtins.str, connected: builtins.bool, remote_ip: builtins.str, remote_tcp_port: builtins.int) -> PyFromSwarm.Connection: ...
-    
+
     @typing.final
     class Message(PyFromSwarm):
         __match_args__ = ("origin", "topic", "data",)
@@ -93,20 +97,24 @@ class PyFromSwarm:
         @property
         def data(self) -> bytes: ...
         def __new__(cls, origin: builtins.str, topic: builtins.str, data: bytes) -> PyFromSwarm.Message: ...
-    
+
     ...
 
 @typing.final
 class ZenohHandle:
     r"""
     Handle to the Zenoh peer session backing the data plane (Phase 1).
-    
+
     Separate from [`PyNetworkingHandle`] (libp2p): only the DATA topic is routed
     here when the `zenoh_data_plane` flag is on. Methods mirror the gossipsub
     surface (subscribe / publish / recv) so the Python `Router` can treat it as
     an alternate transport backend.
     """
     def __new__(cls, listen_endpoints: typing.Optional[typing.Sequence[builtins.str]] = None, connect_endpoints: typing.Optional[typing.Sequence[builtins.str]] = None, namespace: typing.Optional[builtins.str] = None, multicast_scouting: builtins.bool = False) -> ZenohHandle: ...
+    async def listen_addresses(self) -> builtins.list[builtins.str]:
+        r"""
+        Return actual bound data-plane locators without changing connectivity.
+        """
     async def zenoh_subscribe(self, topic: builtins.str) -> None:
         r"""
         Subscribe to a Zenoh key (topic). Idempotent.

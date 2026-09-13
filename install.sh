@@ -107,13 +107,23 @@ if [[ "$OS" == "Linux" ]] && command -v ldconfig >/dev/null 2>&1 \
     fi
 fi
 
-if ! command -v cargo >/dev/null 2>&1 && [[ ! -x "$HOME/.cargo/bin/cargo" ]]; then
-    log "installing Rust (rustup) for the skulk networking bindings"
-    curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
-        | sh -s -- -y --default-toolchain stable --profile minimal
-fi
-# The rustup installer puts cargo here; make it visible to uv's build backend.
+# --- Rust toolchain ---------------------------------------------------------
+
+# Interrupted rustup setup can leave executable proxies without a compiler.
+# Probe both tools before keeping the existing installation or starting uv.
 export PATH="$HOME/.cargo/bin:$PATH"
+if ! cargo --version >/dev/null 2>&1 || ! rustc --version >/dev/null 2>&1; then
+    log "installing or repairing Rust (rustup) for the skulk networking bindings"
+    if ! curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+        | sh -s -- -y --default-toolchain stable --profile minimal; then
+        die "Rust toolchain setup failed; resolve the download, disk or memory error above and rerun this installer."
+    fi
+fi
+if ! cargo --version >/dev/null 2>&1 || ! rustc --version >/dev/null 2>&1; then
+    die "Rust remains unavailable after setup; inspect 'rustup show' and any RUSTUP_TOOLCHAIN override, select a working toolchain, then rerun this installer."
+fi
+
+# --- uv ---------------------------------------------------------------------
 
 if ! command -v uv >/dev/null 2>&1 && [[ ! -x "$HOME/.local/bin/uv" ]]; then
     log "installing uv"

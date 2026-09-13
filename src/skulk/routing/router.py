@@ -33,6 +33,11 @@ from skulk_pyo3_bindings import (
     ZenohHandle,
 )
 
+from skulk.extensions.host_network import (
+    HostNetwork,
+    namespace_fingerprint,
+    tcp_endpoints,
+)
 from skulk.shared.constants import SKULK_NODE_ID_KEYPAIR
 from skulk.shared.models.model_cards import ModelId
 from skulk.shared.types.chunks import DataChunk, ErrorChunk
@@ -477,6 +482,25 @@ class TelemetryTopicRouter(TopicRouter[NodeTelemetry]):
 
 
 class Router:
+    async def host_network(
+        self, network_version: str, namespace_token: str
+    ) -> HostNetwork:
+        """Describe live listeners without dialing peers or exposing namespace secrets."""
+        control = tcp_endpoints(await self._net.listen_addresses(), multiaddr=True)
+        data = (
+            tcp_endpoints(await self._zenoh.listen_addresses(), multiaddr=False)
+            if self._zenoh is not None
+            else ()
+        )
+        return HostNetwork(
+            node_id=self._node_id,
+            network_version=network_version,
+            namespace_fingerprint=namespace_fingerprint(namespace_token),
+            control=control,
+            data_transport="zenoh" if self._zenoh is not None else "gossipsub",
+            data=data,
+        )
+
     @classmethod
     def create(
         cls,

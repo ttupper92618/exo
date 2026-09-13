@@ -10,6 +10,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Final, Self, cast
 
@@ -842,6 +843,11 @@ class Node:
                     None if args.no_worker else realtime_audio_sender
                 ),
                 data_plane_zenoh=_zenoh_on,
+                host_network_provider=partial(
+                    router.host_network,
+                    _LIBP2P_NETWORK_VERSION,
+                    _libp2p_namespace_token(os.environ),
+                ),
                 data_plane_egress_provider=router.data_plane_egress_diagnostics,
                 vision_media_egress_provider=(router.vision_media_egress_diagnostics),
                 telemetry_plane_provider=router.telemetry_plane_diagnostics,

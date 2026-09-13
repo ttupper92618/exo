@@ -86,6 +86,7 @@ dependencies = [
 
 [project.scripts]
 skulk = "skulk.main:main"
+skulk-plugin-service = "skulk.extensions.service_setup:main"
 skulk-build-macos-local-network-probe-app = "skulk.connectivity.local_network_probe_app:main"
 skulk-macos-local-network-probe = "skulk.connectivity.local_network_probe:main"
 

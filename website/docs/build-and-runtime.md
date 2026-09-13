@@ -35,6 +35,14 @@ path used by release-candidate qualification: the installer fetches that exact
 object and checks it out detached, so a moving branch cannot change the code
 between approval and installation.
 
+Before syncing Python dependencies, the source installer checks that both `cargo`
+and `rustc` run successfully. A working Rust toolchain is retained; missing or
+unusable tools trigger Rust setup again. If an interrupted setup left only rustup
+proxies, rerun the installer after resolving its download, disk or memory error;
+you do not need to delete the toolchain directories. The installer stops before
+building Skulk if the compiler remains unavailable and reports the corrective
+action, including checking an explicit `RUSTUP_TOOLCHAIN` override.
+
 The installer fetches prerequisites (git, a C toolchain, rustup, uv), clones
 the repo into `~/skulk`, syncs the environment, and builds the dashboard with
 Skulk's bundled cross-platform Node.js runtime (falling back to a compatible

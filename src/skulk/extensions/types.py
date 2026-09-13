@@ -126,6 +126,20 @@ class CapabilityProvider(Protocol):
 
 
 @runtime_checkable
+class DynamicCapabilityProvider(Protocol):
+    """Optional cached unary contracts for independently managed plugin runtimes.
+
+    Installation and activation can change this snapshot without restarting
+    Skulk. Reads must be bounded, synchronous and free of I/O. Static providers
+    retain priority; ambiguous dynamic contracts are unavailable.
+    """
+
+    def dynamic_capabilities(self) -> Sequence[CapabilityDescriptor]:
+        """Return current cached contracts; readiness is checked separately."""
+        ...
+
+
+@runtime_checkable
 class CapabilityReadiness(Protocol):
     """Optional immediate readiness check for each installed capability.
 

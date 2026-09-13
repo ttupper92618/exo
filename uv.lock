@@ -3029,7 +3029,7 @@ requires-dist = [
 
 [[package]]
 name = "skulk-pyo3-bindings"
-version = "0.2.4"
+version = "0.2.5"
 source = { editable = "rust/skulk_pyo3_bindings" }
 
 [package.dev-dependencies]

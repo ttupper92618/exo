@@ -382,8 +382,44 @@ This file is intentionally dense. If you find a stale fact, fix it inline rather
 
 ### Extensions (plugins)
 
+- **Proposal review:** `proposal_review.py` exports `ProposalReference`, summary,
+  field, page and review models plus `NodeProposalReviewProvider`. `api/plugins.py`
+  exposes read-scoped per-node proposal listing and exact-ID/digest review. Maximum
+  16 summaries per page, 32 text fields per review and 128 KiB per response. Managed
+  owners advertise per-node `proposals_available`. Canonical input, approval and
+  execution remain provider-local; these methods cannot sign or dispatch.
+
+- **Owner proposal actions:** `proposal_actions.py` supplies the optional
+  `NodeProposalActionsProvider` and exact-reference/review-fenced `ProposalApproval`.
+  Approval and explicit interrupted-approval recovery require `plugins:approve`;
+  durable `ProposalOperation` reads require `plugins:read`. Direct and relay routes
+  enforce scopes before broad operation fallback and pass authenticated actor IDs.
+  The provider owns durable intent, signatures and reconciliation. The Plugins
+  page renders bounded plain-text terms and persists only an operation lookup ID;
+  reconnect never resubmits. These actions are separate from steward tools.
+
+- **Isolated steward callbacks:** `managed_host.py` binds one protected local owner
+  to live policy, owned descriptor revisions and exact-target Fabric invocation.
+  `managed.py` exposes the optional steward provider facet through fixed owner IPC.
+  Frames are bounded and sequenced; reconnection admits future calls without replay.
+  No signing key crosses this interface. Overall tool deadlines: reads 5 seconds,
+  inert proposal preparation 20 seconds.
+
+- **Node configuration:** optional `NodeConfigurationProvider` in `extensions/configuration.py`; stable installed node IDs, schema/ordinary values, enabled state, revision and schema digest. `api/plugins.py` exposes `/v1/plugins` inventory and per-node GET/POST configuration. Provider-owned storage and validation, independent of child readiness, never replicated State. `plugins:read/manage/approve` are explicit grants with no pairing defaults; `operator/plugin_scopes.py` precedes broad operation fallback on direct and relay routes. Owner-only `/v1/auth/plugin-grants` uses current encrypted pairing records and revision fences. Plugins dashboard renders ordinary schemas and preserves drafts on conflicts.
+- **Node credentials:** optional `NodeCredentialProvider` in `extensions/credentials.py`; separate per-node GET/POST credential routes expose declarations/readiness and accept bounded write-only values with exact operation/revision/schema fences. Explicit plugin scopes precede broad authorization. Managed IPC never loads the private SDK into core. Providers retain cleanup versions and admission checks; the dashboard keeps values outside Redux/browser persistence and requires refresh after conflicts or unconfirmed writes. No values enter ordinary settings, diagnostics or replicated State.
+
 - **Role:** load separately installed packages and call them at serving-path hooks; deployment-specific behavior without forking Skulk
-- **Lives in:** `src/skulk/extensions/` (`types.py` contract, `loader.py` discovery + guarded dispatch); call sites in `API.chat_completions` and `API._steward_chat_completions`
+- **Lives in:** `src/skulk/extensions/` (`types.py` contract, `loader.py` discovery + guarded dispatch, `managed.py` isolated-owner adapter); call sites in `API.chat_completions` and `API._steward_chat_completions`
+- **Runtime artifacts and staging:** `runtime_artifacts.py` verifies the complete canonical v2 envelope, owner-provisioned `RuntimeTrust`, exact core/native build digest, platform/Python compatibility, bundle/wheel hashes, safe archive paths and full wheel dependencies. Provider manifest policy is signed opaque data. `runtime_install.py:RuntimeInstaller` stages under protected service storage using isolated venv + offline hashed wheels, and journals `RuntimeOperation` IDs (`staging`, `staged`, `recovery_required`), release-sequence binding and monotonic trust. Waiter cancellation retains ownership until completion is durably recorded. Cached completion is reverified; interrupted generations are retained without replay. `runtime_integrity.py` seals installed files, permissions and interpreter identity; verify before private Python starts and disable bytecode writes with `-B`. Missing or changed seals require explicit recovery. `runtime_files.py` supplies protected atomic files and fixed local locks. This path does not activate services or alter logical/cleanup state.
+- **Runtime selection:** `runtime_selection.py:RuntimeSelector` holds installer and stopped-supervisor ownership, revalidates the signed staged generation and installed seal, journals exact intent, and atomically publishes `RuntimeSelection`. `SelectionOperation` retains pending/completed/recovery/superseded state. Explicit disable can withdraw stalled local activation/selection, with `withdraws_operation_id` retained through both journals and restart; it never runs the withdrawn release. Live work and pending withdrawal cannot be superseded. Explicit rollback preserves the highest selected sequence; expanded permissions require acceptance; incompatible state or configuration schemas require migration. Disable/uninstall retains selected files and logical/cleanup state even when trust is invalid. Recovery completes only local selection, never provider acquisition. Selection is desired state, not service health; the launcher must revalidate the live core before execution.
+- **Runtime service:** `runtime_service.py:RuntimeService` runs separately from inference and executes only the freshly verified selected generation's fixed `__owner__` archive entrypoint with isolated Python and bytecode writes disabled. It owns `service.lock`, repeats trust/core/artifact/seal checks, passes a launcher lifetime pipe and persists payload-free `RuntimeServiceStatus`. Running means process existence, not readiness. Shutdown checks `supervisor.lock` after bounded owner teardown; surviving children must retain that fence. Unexpected owner exit ends this launcher lifetime without replay. Fixed OS registration remains separate from this primitive.
+- **Runtime management:** `runtime_controller.py` journals immutable `LifecycleRequest` and `LifecycleOperation` for revision-fenced activate/disable. Preview happens before stopping; accepted work outlives callers; boot recovery finishes only recorded local selection. `runtime_manager.py` owns a protected bounded local socket and up to sixteen controllers, automatically provisions the locally established transport binding and retains unavailable installations in inventory. Fixed operations are list/register/get/submit/operation/recover; no caller-supplied commands, paths, credentials or paid approvals. Terminal JSON control uses the same socket. HTTP lifecycle and OS registration are not yet wired to this primitive.
+- **Stable manager runtime:** `service_snapshot.py` stages a local copy of the exact installed Skulk environment, effective core/bindings and declarative resources. It creates a fresh standard venv, omits editable/installer path shims, refuses unknown startup hooks and external links, compares source bytes and dependency inventory before/after, and qualifies the copied core. `ServiceSnapshot` binds a complete protected tree seal; activation needs a stopped manager. The fixed standalone `service_bootstrap.py` runs with `-I -S -B`, verifies the manifest, interpreter identity and full tree before enabling Python site initialization, and execs only the generic manager with its explicit state root. It is not a replacement for Skulk installation or a same-user sandbox. OS setup remains a separate gate.
+- **Private release staging:** `extensions/runtime_download.py` retains signed metadata reviews, downloads only from one owner-configured HTTPS source, verifies exact artifacts, and stages through `RuntimeInstaller` without activating. Source/trust/credential destinations require direct owner authority; explicit remote plugin grants can inspect/install only the trusted selection. Feed secrets are write-only protected references and validation errors are redacted. Retained install IDs outlive browser disconnect; interrupted work is never automatically replayed. Dashboard review/staging/activation and `skulk-plugin-service manage` share manager operations. Dashboard source setup generates identities, requires explicit publisher trust and keeps credential values out of Redux/browser persistence. Omitted source fields retain existing settings; trust updates preserve revocations. Explicit `recover_install` uses the original ID/digest with a reviewed current source revision, retains each attempt, and never moves selected/pending generations or reseals completed ones.
+- **Live manager discovery:** `extensions/managed_services.py` watches the protected local setup connection and manager inventory; newly registered installations enter configuration and cached capability lookup without API restart. Manager unavailability independently fences admission. Existing extensions retain namespace priority. `api/managed_plugins.py` provides explicit plugin-scoped inventory, registration, selection, submit/status/recover HTTP routes, backed by the same retained local operation IDs as the terminal. Dashboard reconnect reads pending/selected operation references without replay. API shutdown releases observers, not OS service ownership.
+- **Managed owners:** protected local `SKULK_CONFIG_HOME/managed-plugins/*.json` registrations contain `plugin_id` and absolute `state_root`; no HTTP command/path selection or private SDK import. Owner-only Unix sockets carry bounded discovery, exact-node unary invocation and revision/schema-fenced ordinary configuration. Owner transport identity must match Skulk. Health polls use a one-second timeout, observations expire after three seconds; failed owners retain their management facet. `DynamicCapabilityProvider.dynamic_capabilities()` supplies cached unary snapshots for live lookup. Static IDs win and conflicting dynamic contracts are hidden. Explicit manager disable releases cached capability reservations without removing management nodes; unknown manager or selection state retains conflict protection. Loader-owned one-second telemetry reconciliation withdraws dynamic tags at shutdown without stopping external services. The adapter carries fixed steward and owner action messages; provider approval policy stays outside core.
+- **Plugin attachment facts:** `extensions/host_network.py` and `GET /v1/plugins/host-network` expose bounded numeric TCP listeners, live peer identity, data transport and a domain-separated namespace fingerprint under existing plugin-read authorization. `Router.host_network` queries the running libp2p swarm and Zenoh session, including OS-assigned ports. Raw routing namespaces remain private; no dial/reconfigure action is exposed. Provider-specific secure tunnels and peer bootstrap remain plugin-owned.
+
 - **Discovery:** `skulk.extensions` entry-point group, scanned once at node startup (`load_extensions()` in `src/skulk/main.py`, API-spawning nodes only); entry point value = zero-arg factory returning a `SkulkExtension`
 - **Contract:** `SkulkExtension` (name, `skulk_requires` PEP 440 specifier, `chat_middleware()`); `ChatMiddleware.transform_chat_request(context, task_params)` pre-dispatch + `ChatMiddleware.observe_chat_response(context, task_params, summary)` post-completion (background task, immutable `ChatResponseSummary`)
 - **Steward turns:** the steward's bespoke surface returns before `chat_completions`' hook, so it wires both hooks explicitly (`API._steward_extension_transform` + `LoadedExtensions.tap_chat_stream` over `StewardHarness.run_turn_chunks`). The turn is presented as `TextGenerationTaskParams(model=skulk/steward, instructions=STEWARD_SYSTEM_PROMPT, input=user/assistant history)`; only `instructions` (becomes the turn's system message via `run_turn_chunks(system_prompt=...)`) and `input` (user/assistant only) are read back. A transform leaving no trailing user message is discarded in full (history, prompt, and params) with a warning; an accepted transform's returned params are normalized to the reserved model, filtered history, and effective prompt, so observers always describe the turn served. Exactly one observer call per turn: `StewardHarness._generate_events` (investigation steps) and `canary_probe` pass `extension_tap=False` to `API.text_generation_chunk_stream`/`_tapped_text_stream`, which withholds the extension chat-summary tap while keeping envelope and telemetry taps. Same guarded never-degrade semantics as the ordinary path.
@@ -1072,7 +1108,7 @@ Only `SKULK_*` names are read. The legacy `EXO_*` deprecation runway was removed
 | `SKULK_PIPELINE_EVAL_TIMEOUT_SECONDS` | Per-eval timeout in pipeline collectives (default 60s) |
 | `SKULK_GROUP_CONNECT_DEADLINE_SECONDS` | Hard deadline for distributed group formation (`mx.distributed.init`, default 120s). Ring init with `strict=True` blocks forever when a neighbor socket fails the post-TCP rank handshake (#265); on expiry the runner exits via the wedge path, the worker gives the instance up on first failure (#260), and a fresh placement mints a new ring port (also clearing stale-socket handshake collisions) |
 | `SKULK_WARMUP_DEADLINE_SECONDS` / `SKULK_WARMUP_DEADLINE_SECONDS` | Hard deadline for runner warmup (default 300s). A wedged Metal eval parks warmup forever at 0% CPU and silently blocks all dispatch; the watchdog hard-exits the runner instead (supervisor reports RunnerFailed, node keeps working) |
-| `SKULK_EXTENSIONS_DISABLE` | `1` skips extension (plugin) discovery entirely on this node; see Extensions component section |
+| `SKULK_EXTENSIONS_DISABLE` | `1` skips Python entry-point discovery and managed capability admission; managed owner configuration remains available. See Extensions component section. |
 | `SKULK_GPU_TELEMETRY_VENDOR` | `nvidia` pins Linux GPU telemetry (and the worker VRAM fit guard) to the NVIDIA adapter on mixed-GPU hosts; default prefers AMD sysfs, then NVML |
 | `SKULK_TELEMETRY_DISABLE` | `1` hard-disables field telemetry on this node regardless of the fleet consent setting |
 | `SKULK_ENABLE_EXPERIMENTAL_MODE` | Node-local master gate for in-development features (off unless truthy: `1`/`true`/`yes`/`on`). Read by `experimental_mode_enabled` (`src/skulk/shared/experimental.py`); surfaced in `GET /config` as `effective.experimental_mode_enabled`. NO built-in experiment is currently active: every speech flag graduated to standard, so the entire `experiments` config section (`tts_streaming`, `stt_realtime`, `speech_translation`) is deprecated accepted-but-ignored compatibility surface, and the dashboard no longer renders an Experiments section. The gate machinery stays for future features. Speech translation (`/v1/audio/translations`) is gated only by the mounted card's `audio.supports_translation`. |
@@ -1318,3 +1354,111 @@ hardware restrictions. Launchable placement previews expose the same complete
 the API/master card checks and resource-derived context ceiling still apply.
 Exact-instance creation does not atomically revalidate topology or backend/build
 support, so controllers must check live node support before and after submission.
+
+- **Local transport renewal:** `managed_attachment.py` shares an API-lifetime `attachment.lock` across configured managed owners. Protected local records bind a generated profile ID and exact manager installation path; legacy records remain manual. Internal `AttachmentRequest` supplies the actual transport ID and live measured core digest. The manager requires its exact profile/build and an active bridge fence, stops affected owners, and uses `runtime_attachment.py` to journal old/new transport bindings under controller/service/child locks. Interrupted metadata writes recover before owner startup; selected runtimes, logical plugin IDs, settings, receipts and spending reservations are preserved. This is not cleanup enrollment and is not a remote management verb.
+
+- **Local system setup:** `service_setup.py` exposes `skulk-plugin-service setup|status` and journals source identity, generated profile, staged runtime and installation progress. Repeated setup reuses completed staging; source core/Python/dependency changes create a new operation, retaining any interrupted predecessor. `service_registration.py` is a standalone standard-library-only sudo helper with prepare/stop/install actions for the current account's fixed nonroot service. It walks root-owned parent directories without following links, refuses foreign unit definitions, and installs system LaunchDaemons or systemd multi-user services. No HTTP request can supply commands, paths or unit bytes. State lives in fixed service-owned system directories, and API connection metadata is generated under the existing Skulk configuration. One profile per account is supported. Dynamic API registration, dashboard setup and physical reboot gates remain outstanding.
+
+Skulk wheels and source distributions include declarative resources under
+`skulk/resources`. Discovery prefers the imported package and retains legacy
+service-copy and frozen bundle layouts. Explicit local setup with changed source
+may supersede failed setup while preserving prior operations/profile and staging
+before service stop. Linux registration uses a literal `WorkingDirectory` path;
+the exact old quoted unit remains recognizable for repair. Stop verifies inactive
+or failed status with no main process before proceeding. The source-tree `resources` symlink points
+to `src/skulk/resources`, preserving existing tools without duplicate payloads.
+
+Managed capability nodes may expose the optional `NodePreflightProvider` facet.
+The generic `/v1/plugins/{plugin_id}/nodes/{node_id}/preflight` read returns
+bounded prerequisite results and observed revision metadata independently of
+child readiness. Skulk owns authorization and response bounds; the plugin owns
+provider-specific checks and fresh enable/restart enforcement. Dashboard setup
+checks do not grant acquisition or spending authority.
+
+
+Public setup files use the optional `NodeSetupProvider` facet in
+`extensions/setup.py` and the read-scoped
+`/v1/plugins/{plugin_id}/nodes/{node_id}/setup` route. The management provider owns
+initial identity generation; the read returns only bounded public text artifacts
+and observed revisions. Disabled children retain this facet. The dashboard uses
+explicit downloads without changing credentials or granting lifecycle/spending
+authority. Private values remain in the write-only credential path.
+
+- **Installed local plugin setup:** `extensions/local_setup.py` backs
+  `skulk-plugin-service setup-plugin <managed-id> -- <setup-fields>`. It resolves
+  the protected local profile and installation, requires retained release/trust
+  history, verifies the selected complete runtime, and execs only signed
+  `__setup__.py`. The installer lock is inherited until exit; disabled selections
+  are allowed. No provider SDK enters Skulk and no HTTP route launches this path.
+  Plugin setup owns prompts and explicit local registration, never remote grants.
+
+
+Nonbillable setup actions use the optional `NodeSetupActionsProvider` facet in
+`extensions/setup_actions.py`. Installed nodes advertise `setup_actions_available`;
+core exposes fixed form/start/observation/resume routes under `/v1/plugins` with
+separate read/manage authorization. Actions declaring `requires_approval` also
+require `plugins:approve`; resume preserves the original requirement even if the
+current action changes. This permits protected setup, never paid proposal approval.
+The managed adapter dispatches to the private
+owner, which owns durable intent, reconciliation and background execution outside
+the unary child slot. Dashboard reconnect only observes retained progress. Ordinary
+forms cannot contain credential fields, and setup completion does not imply
+preflight, enablement or paid approval. Public setup-file reads remain separate.
+
+
+Guided release installation uses `terminal_install.TerminalInstaller` through
+`skulk-plugin-service install-plugin [MANAGED_ID]`. It generates identities before
+effects and composes existing typed manager requests with separate publisher trust,
+download and activation consent. Feed credentials use hidden terminal input.
+Resume reads retained operations; download recovery requires explicit consent,
+and failed or unrelated lifecycle transitions are never replaced automatically.
+No provider policy, node enablement or paid approval is added to core.
+
+Installed plugin terminal management uses `skulk-plugin-service manage-plugin`
+and the selected archive's fixed optional `__manage__.py`. `extensions/local_setup.py`
+shares verification and inherited generation ownership with `setup-plugin`, while
+keeping entrypoints distinct. The plugin derives durable coordinates and owns its
+fixed CLI verbs; core accepts no executable/module selector and adds no HTTP exec
+route. Terminal commands run as the existing nonroot owner and cannot self-approve
+paid effects. The independent manager remains available for owner/runtime recovery.
+
+
+The dashboard's `auth/operatorSession.ts` implements the existing Ed25519 pairing
+and rotating-token protocol for a browser on a protected gateway URL. Its access
+panel reviews cluster identity, retains credentials only in module memory, serializes
+refresh and injects bearer headers below RTK Query request metadata. It never replays
+an API mutation after authentication failure. Session changes clear caches and plugin
+drafts; explicit direct-host selection is required after a paired session ends.
+Plugin grant administration refuses a presented paired bearer even on the direct
+listener. Native relay inner TLS remains a separate transport, not a browser shim.
+
+Managed owner proposal observations may include separate receipt reconciliation
+(`ProposalReconciliation`): lifecycle state, journal read time, stale health/access
+and a safe code. The provider owns exact receipt correlation; core only authorizes
+read access and transports bounded metadata. Later confirmed absence never rewrites
+submission uncertainty. Dashboard and terminal show the same facts without retrying
+an effect or claiming inference readiness from resource state.
+
+
+Managed proposal phase `acknowledged` records durable asynchronous controller
+acceptance, before any claim of provider completion. The private owner validates
+request correlation, preserves acknowledgement across restart and reconciles later
+receipt state without replay. Core and dashboard transport/display this bounded
+phase alongside independent cleanup observations.
+
+- **Selected but stopped plugins:** `LifecycleRequest.action=select` uses the same
+  revision, trust, compatibility and permission checks as activation but publishes
+  `RuntimeSelection.enabled=false`. Terminal and dashboard clients share the
+  operation; a later explicit `activate` permits owner startup. Local signed
+  setup/management entrypoints can use the selected runtime before owner identity
+  initialization. Interrupted selection journals retain `verify_runtime=true` and
+  revalidate trust/artifacts; ordinary disable preserves invalid-trust withdrawal.
+  Selection performs no plugin state migration or paid operation.
+
+
+Managed-plugin `uninstall` is a retained-state withdrawal through the existing
+`RuntimeController`, using the same owner stop and selection journal as disable.
+The selected lifecycle operation determines inventory's `uninstalled` flag, separately
+from pending-operation progress. No extra supervisor, provider call or purge is added.
+Configuration, credentials, receipts and runtime generations remain available;
+independent cleanup continues. A verified `select` or `activate` reinstalls explicitly.

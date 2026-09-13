@@ -1,3 +1,4 @@
+import { operatorSession } from '../auth/operatorSession';
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 
 /**
@@ -12,7 +13,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
  */
 export const apiSlice = createApi({
   reducerPath: 'api',
-  baseQuery: fetchBaseQuery({ baseUrl: '/' }),
+  baseQuery: fetchBaseQuery({ baseUrl: '/', fetchFn: operatorSession.fetch }),
   tagTypes: [
     'ClusterState',
     'Config',
@@ -22,6 +23,8 @@ export const apiSlice = createApi({
     'Trace',
     'NodeDiagnostics',
     'PairingInvitations',
+    'Plugins',
+    'PluginConfiguration',
     'StewardStatus',
     'StewardProposals',
   ] as const,

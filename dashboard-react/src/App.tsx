@@ -32,11 +32,14 @@ import { ChatView } from './components/pages/ChatView';
 import { OperatorPage } from './components/pages/OperatorPage';
 import { StewardChatView } from './components/pages/StewardChatView';
 import { IntegrationsPage } from './components/pages/IntegrationsPage';
+import { PluginsPage } from './components/pages/PluginsPage';
 import { InstancePanel, type InstanceCardData } from './components/layout/InstancePanel';
 import { ConversationPanel } from './components/layout/ConversationPanel';
 import { addToast } from './hooks/useToast';
 import type { InstanceStatus, NodeRunnerState } from './components/cluster/RunningInstanceCard';
 import { chatActions } from './store/slices/chatSlice';
+import { operatorSession } from './auth/operatorSession';
+import { apiSlice } from './store/api';
 import { useAppDispatch, useAppSelector } from './store/hooks';
 import { uiActions, type ObservabilityTab } from './store/slices/uiSlice';
 import { useSkulkTranslation, type SkulkTranslate } from './i18n/tolgee';
@@ -246,6 +249,14 @@ export function App() {
   // Observability panel state lives on the global UI store so any component (toolbar
   // nav, per-node bug icons, future cross-links) can open the panel to a specific tab.
   const dispatch = useAppDispatch();
+  useEffect(() => {
+    let identity = operatorSession.snapshot();
+    return operatorSession.subscribe(() => {
+      const next = operatorSession.snapshot();
+      if (next.mode !== identity.mode || next.deviceId !== identity.deviceId) dispatch(apiSlice.util.resetApiState());
+      identity = next;
+    });
+  }, [dispatch]);
   const openObservability = (tab?: ObservabilityTab, nodeId?: string) =>
     dispatch(uiActions.openObservability({ tab, nodeId }));
   const activeRoute = useAppSelector((s) => s.ui.activeRoute);
@@ -269,7 +280,7 @@ export function App() {
   // On load, honour the URL path so /operator (and future deep-links) work.
   useEffect(() => {
     const path = window.location.pathname.replace(/^\//, '') || 'cluster';
-    const valid: typeof activeRoute[] = ['cluster', 'model-store', 'chat', 'steward', 'integrations', 'operator'];
+    const valid: typeof activeRoute[] = ['cluster', 'model-store', 'chat', 'steward', 'integrations', 'plugins', 'operator'];
     if (valid.includes(path as typeof activeRoute)) {
       dispatch(uiActions.setActiveRoute(path as typeof activeRoute));
     }
@@ -715,6 +726,8 @@ export function App() {
               <IntegrationsPage readyInstances={instanceCards} />
             ) : activeRoute === 'operator' ? (
               <OperatorPage />
+            ) : activeRoute === 'plugins' ? (
+              <PluginsPage />
             ) : topology ? (
               <TopologyGraph
                 data={topology}

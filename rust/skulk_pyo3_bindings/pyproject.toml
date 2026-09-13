@@ -9,7 +9,7 @@ name = "skulk_pyo3_bindings"
 # and every installed startup script (old and new) runs uv sync. Bump it in
 # the same PR as any NETWORK_VERSION change so nodes rebuild their bindings
 # on the FIRST auto-update restart, not the second (#659 review, P1).
-version = "0.2.4"
+version = "0.2.5"
 description = "Add your description here"
 readme = "README.md"
 authors = [

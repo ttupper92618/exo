@@ -16,6 +16,7 @@ from skulk.operator.pairing import (
     OperatorScopeError,
     PairingGatewayNotInitializedError,
 )
+from skulk.operator.plugin_scopes import required_plugin_scope
 
 _UNAUTHENTICATED_PATHS: Final = frozenset(
     {
@@ -24,7 +25,10 @@ _UNAUTHENTICATED_PATHS: Final = frozenset(
         "/v1/auth/token",
     }
 )
-_DIRECT_DASHBOARD_ONLY_PREFIXES: Final = ("/v1/auth/pairing-invitations",)
+_DIRECT_DASHBOARD_ONLY_PREFIXES: Final = (
+    "/v1/auth/pairing-invitations",
+    "/v1/auth/plugin-grants",
+)
 _MODEL_PREFIXES: Final = ("/v1/models", "/models", "/model-store", "/v1/store")
 _INFERENCE_PREFIXES: Final = (
     "/v1/chat",
@@ -83,13 +87,27 @@ class OperatorGatewayAuthorization:
                 required_scopes=required_scopes,
             )
         except PairingGatewayNotInitializedError:
-            await _deny(scope, receive, send, status_code=503, detail="operator gateway unavailable")
+            await _deny(
+                scope,
+                receive,
+                send,
+                status_code=503,
+                detail="operator gateway unavailable",
+            )
             return
         except OperatorScopeError:
-            await _deny(scope, receive, send, status_code=403, detail="operator scope denied")
+            await _deny(
+                scope, receive, send, status_code=403, detail="operator scope denied"
+            )
             return
         except (OperatorCredentialInvalidError, OperatorCredentialExpiredError):
-            await _deny(scope, receive, send, status_code=401, detail="operator credential invalid")
+            await _deny(
+                scope,
+                receive,
+                send,
+                status_code=401,
+                detail="operator credential invalid",
+            )
             return
         scope[OPERATOR_GATEWAY_AUTHORIZED_SCOPE_KEY] = True
         await self._app(scope, receive, send)
@@ -99,14 +117,19 @@ def _required_scopes(scope: Scope) -> Sequence[OperatorScope]:
     """Map canonical routes onto the smallest existing operator scope."""
 
     path = cast(str, scope.get("path", ""))
+    plugin_scope = required_plugin_scope(cast(str, scope.get("method", "GET")), path)
+    if plugin_scope is not None:
+        return (plugin_scope,)
     if path.startswith("/v1/auth/devices"):
         return ("devices:manage",)
     if path.startswith(_INFERENCE_PREFIXES):
         return ("chat:write",)
     if path.startswith(_MODEL_PREFIXES):
         method = cast(str, scope.get("method", "GET")).upper()
-        return ("models:read",) if method in {"GET", "HEAD", "OPTIONS"} else (
-            "operations:write",
+        return (
+            ("models:read",)
+            if method in {"GET", "HEAD", "OPTIONS"}
+            else ("operations:write",)
         )
     method = cast(str, scope.get("method", "GET")).upper()
     if scope["type"] == "http" and method in {"GET", "HEAD", "OPTIONS"}:
