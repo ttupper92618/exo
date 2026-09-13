@@ -1855,6 +1855,12 @@ reaps its generated relay on expiry or parent EOF. See
 [the fixture contract](operator-workload-fixture.md) for lifecycle and evidence
 limits; generated data does not qualify released-device capacity.
 
+An explicit programmatic public-rehearsal hook is separate from private ingress
+and disabled in the CLIs. It requires a run-bound dedicated WSS hostname and a
+one-hour maximum fixture lease. The injected controller owns bounded exposure,
+independent expiry and verified provider cleanup; syntax validation does not
+attest those effects. Production targets and existing authority remain excluded.
+
 `bench/observe_operator_workload.py` optionally adds a bounded loopback opaque
 TCP bridge and ASGI metadata adapter. A digest-pinned local subprocess reduces
 fixed categories, timings, and sizes to aggregate JSON; no raw trace or content

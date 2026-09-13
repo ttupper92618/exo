@@ -69,7 +69,31 @@ Provisioning uses the same private WSS origin for app and gateway roles; all
 local listeners remain loopback-bound and signed authority and pinned inner
 TLS are unchanged. The context closes the ingress even when provisioning fails.
 There is no existing-authority or production-target input. Do not substitute
-the operating relay, expose a public fixture, or silently change artifact pins.
+the operating relay, expose this private pilot publicly, or silently change artifact pins.
+
+### Explicit public rehearsal hook
+
+`isolated_fixture` separately accepts a `PublicFixtureIngress` injected context.
+Neither CLI nor `observe_fixture` enables this hook. It is mutually exclusive
+with `private_ingress`, limits the fixture lease to one hour, and requires an
+exact `wss://rehearsal-<32 lowercase hex run identifier>.<domain>` origin without
+a port, path, credentials, query or fragment. The context must return that exact
+origin; mismatch or subsequent provisioning failure closes the owned context.
+Private-pilot origin validation is unchanged.
+
+The separately reviewed controller must create and verify ownership of a new
+dedicated hostname and tunnel, expose only the supplied generated carrier port,
+enforce aggregate byte and connection limits with backpressure, and arrange
+independent expiry even if the controller dies. It must verify tunnel and DNS
+cleanup with two independent inventory snapshots. Hostname validation does not
+prove ownership, resource bounds, or cleanup; the hook alone is not permission
+to create provider resources. Any cleanup uncertainty blocks another run.
+
+No diagnostic listener, existing authority, production configuration or workload
+may be exposed. Signed authority and pinned inner TLS remain unchanged. Use only
+generated inputs and retain aggregate evidence. A successful controller exit or
+zero transport errors alone does not prove client operation, recovery, capacity,
+or production readiness; verify those outcomes separately.
 
 Use only generated test prompts and speech input, never personal information.
 Generated handlers discard input and do not echo or persist it. Access logs

@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import socket
 import ssl
 import sys
@@ -100,6 +101,47 @@ class PrivateFixtureIngress(Protocol):
     def __call__(self, relay_port: int, /) -> AbstractAsyncContextManager[str]:
         """Start private ingress for this generated port, yielding its WSS origin."""
         ...
+
+
+@final
+@dataclass(frozen=True)
+class PublicFixtureIngress:
+    """Explicit owned test ingress, separate from the private pilot contract.
+
+    `run_id` is a fresh 128-bit lowercase hex identifier and `origin` must name
+    its dedicated rehearsal host. `open` must expose only its supplied generated
+    carrier port, enforce bounded bytes/connections, independently expire on
+    controller death, and verify tunnel cleanup on exit. These are injected
+    effect obligations, not properties attested by hostname validation.
+    No existing cluster configuration or authority is accepted.
+    """
+
+    run_id: str
+    origin: str
+    open: Callable[[int], AbstractAsyncContextManager[str]]
+
+
+def validate_public_fixture_origin(origin: str, run_id: str) -> str:
+    """Require a canonical WSS origin bound to a dedicated rehearsal hostname.
+
+    This is a fail-closed target naming gate, not proof of DNS ownership or
+    provider cleanup. No arbitrary existing relay URL, path, explicit port,
+    credential, fragment, cleartext or private-pilot hostname is accepted.
+    """
+    if re.fullmatch(r"[0-9a-f]{32}", run_id) is None:
+        raise ValueError("invalid public fixture run identifier")
+    prefix = f"wss://rehearsal-{run_id}."
+    suffix = origin.removeprefix(prefix)
+    if (
+        not origin.startswith(prefix)
+        or re.fullmatch(
+            r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", suffix
+        ) is None
+        or len(origin) > 259
+        or suffix.endswith(".ts.net")
+    ):
+        raise ValueError("public fixture requires its dedicated rehearsal WSS origin")
+    return origin
 
 
 def validate_private_fixture_origin(origin: str) -> str:
@@ -292,6 +334,7 @@ async def isolated_fixture(
     *,
     observer: FixtureObserver | None = None,
     private_ingress: PrivateFixtureIngress | None = None,
+    public_ingress: PublicFixtureIngress | None = None,
 ) -> AsyncIterator[RunningFixture]:
     """Start real local relay/gateway/auth with synthetic API bodies, then reap all.
 
@@ -304,7 +347,14 @@ async def isolated_fixture(
     loopback relay. All advertised roles use that same origin. Default behavior
     and CLI remain loopback-only. Ingress must be removed even if provisioning
     fails, and cannot accept existing authority or a production relay target.
+    Optional `public_ingress` is mutually exclusive with the private hook and
+    requires a dedicated run-bound hostname, a lease no longer than one hour,
+    and independently owned bounded ingress/cleanup. Neither CLI enables it.
     """
+    if public_ingress is not None:
+        if private_ingress is not None or settings.lifetime_seconds > 3600:
+            raise ValueError("public fixture requires one ingress and a one-hour lease")
+        validate_public_fixture_origin(public_ingress.origin, public_ingress.run_id)
     verify_binary(settings)
     deadline = asyncio.get_running_loop().time() + settings.lifetime_seconds
     async with fixture_lease(settings.lifetime_seconds), AsyncExitStack() as stack:
@@ -326,6 +376,13 @@ async def isolated_fixture(
                 relay_origin = validate_private_fixture_origin(
                     await stack.enter_async_context(private_ingress(relay_port))
                 )
+            elif public_ingress is not None:
+                opened_origin = await stack.enter_async_context(
+                    public_ingress.open(relay_port)
+                )
+                if opened_origin != public_ingress.origin:
+                    raise ValueError("public fixture ingress origin changed")
+                relay_origin = opened_origin
             provisioning_process = await asyncio.create_subprocess_exec(
                 str(binary),
                 "provision-on-demand",
