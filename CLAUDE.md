@@ -157,6 +157,8 @@ A single Skulk `Node` (src/skulk/main.py) runs multiple components:
   Its separate programmatic public-rehearsal ingress requires a run-bound WSS
   hostname and one-hour lease; the injected controller must enforce bounds,
   independent expiry and verified cleanup. Neither CLI enables public ingress.
+  Public-only route startup allows at most 120 seconds, capped by the remaining
+  fixture lease; the controller checks public readiness before showing pairing.
   `bench/observe_operator_workload.py` adds bounded gateway TCP/ASGI metadata
   observation into a digest-pinned aggregate recorder subprocess. It exports
   no raw trace/content, and rejects incomplete flows or queue overflow. Its

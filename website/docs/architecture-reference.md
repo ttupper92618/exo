@@ -1238,6 +1238,9 @@ rust/                   # libp2p (networking), PyO3 bindings, system_custodian
   run-bound WSS hostname, at most one hour, mutually exclusive with private ingress.
   Controller must enforce bounded exposure, independent expiry and verified cleanup;
   naming validation does not attest effects. No CLI opt-in or production target.
+  Public-only route readiness: at most 120 seconds and remaining fixture lease;
+  local/private retries unchanged. Pairing exposure also requires controller-side
+  public readiness after the carrier starts.
 - Local relay lifetime: `bench/operator_fixture_lease.py`; independent expiry and
   parent-EOF watchdog; normal runner teardown removes temporary authority/QR files.
 - Schema validation: `bench/validate_operator_fixture.cjs`; exact app source commit

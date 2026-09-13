@@ -1860,6 +1860,9 @@ and disabled in the CLIs. It requires a run-bound dedicated WSS hostname and a
 one-hour maximum fixture lease. The injected controller owns bounded exposure,
 independent expiry and verified provider cleanup; syntax validation does not
 attest those effects. Production targets and existing authority remain excluded.
+Public route startup alone has a 120-second readiness ceiling, further capped by
+the remaining fixture lease, to allow fresh ingress setup; local/private retries
+are unchanged. The controller verifies public readiness before exposing pairing.
 
 `bench/observe_operator_workload.py` optionally adds a bounded loopback opaque
 TCP bridge and ASGI metadata adapter. A digest-pinned local subprocess reduces
