@@ -5,6 +5,7 @@ import base64
 import hashlib
 import os
 import socket
+import sys
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,6 +14,7 @@ from uuid import UUID
 
 import hypercorn.asyncio as hypercorn_asyncio
 import pytest
+from aiohttp import web
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from hypercorn.config import Config
@@ -46,6 +48,45 @@ def test_generated_models_use_canonical_task_vocabulary() -> None:
     models = cast(list[dict[str, object]], generated_responses()["/v1/models"]["data"])
     assert models[0]["tasks"] == ["TextGeneration"]
     assert models[1]["tasks"] == ["TextToSpeech"]
+
+
+async def test_readiness_allows_explicit_extended_startup_but_rejects_dead_guardian() -> None:
+    """Public setup retries readiness without accepting an exited relay owner."""
+    requests = 0
+
+    async def ready(request: web.Request) -> web.Response:
+        nonlocal requests
+        requests += 1
+        return web.Response(status=204 if requests >= 3 else 503)
+
+    app = web.Application()
+    app.router.add_get("/readyz", ready)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    port = cast(tuple[str, int], listener.getsockname())[1]
+    site = web.SockSite(runner, listener)
+    await site.start()
+    guardian = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", "import time; time.sleep(30)",
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="did not become ready"):
+            await fixture_module.wait_fixture_relay(port, guardian, attempts=2)
+        await fixture_module.wait_fixture_relay(port, guardian, attempts=3)
+        assert requests == 3
+        guardian.terminate()
+        await guardian.wait()
+        with pytest.raises(RuntimeError, match="exited before readiness"):
+            await fixture_module.wait_fixture_relay(port, guardian, attempts=2400)
+        assert requests == 3
+    finally:
+        if guardian.returncode is None:
+            guardian.kill()
+            await guardian.wait()
+        await runner.cleanup()
 
 
 class _ChatDelta(TypedDict, total=False):

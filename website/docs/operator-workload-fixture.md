@@ -81,6 +81,14 @@ a port, path, credentials, query or fragment. The context must return that exact
 origin; mismatch or subsequent provisioning failure closes the owned context.
 Private-pilot origin validation is unchanged.
 
+The ingress context starts before the generated carrier. It must not block entry
+on carrier-dependent public readiness: start its independent guardian, yield the
+predetermined owned origin, and verify public readiness after the fixture starts.
+Only this explicit public path allows up to 120 seconds for local route readiness,
+capped by the remaining whole-session lease. Guardian exit still fails immediately;
+timeout never yields pairing to the caller. Local/private readiness retries are
+unchanged. The controller must verify public readiness before exposing pairing.
+
 The separately reviewed controller must create and verify ownership of a new
 dedicated hostname and tunnel, expose only the supplied generated carrier port,
 enforce aggregate byte and connection limits with backpressure, and arrange

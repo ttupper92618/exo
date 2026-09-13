@@ -350,6 +350,10 @@ It is not an observed workload profile or relay capacity result.
 The explicit programmatic public-rehearsal hook requires a separately reviewed
 bounded, independently expiring ingress controller with verified cleanup; no CLI
 enables it. Its run-bound hostname gate does not attest provider ownership.
+The public hook starts before the carrier, so its controller awaits public
+readiness after fixture startup and before showing pairing. Public route startup
+has a 120-second ceiling within the existing whole-session lease; local/private
+readiness retries are unchanged.
 `bench/observe_operator_workload.py` adds fixed-vocabulary flow controls and a
 bounded aggregate recorder pipe. The same contract documents artifact pins,
 opt-in recorder tests, measurement boundaries, and physical-device prerequisites.

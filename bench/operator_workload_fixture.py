@@ -258,9 +258,17 @@ def _private_qr(path: Path, value: str) -> None:
         code.make_image().save(output)
 
 
-async def _wait_ready(port: int, guardian: asyncio.subprocess.Process) -> None:
+async def wait_fixture_relay(
+    port: int, guardian: asyncio.subprocess.Process, *, attempts: int = 100
+) -> None:
+    """Probe local route readiness while the owning guardian remains alive.
+
+    The caller owns the whole-session deadline. Public fixture startup supplies
+    more bounded attempts inside its additional 120-second deadline; local and
+    private callers preserve the original retry count.
+    """
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=1)) as client:
-        for _ in range(100):
+        for _ in range(attempts):
             if guardian.returncode is not None:
                 raise RuntimeError("fixture relay exited before readiness")
             try:
@@ -472,7 +480,18 @@ async def isolated_fixture(
                         await wait_fixture_gateway(
                             backend_port, configuration, listener
                         )
-                        await _wait_ready(relay_port, guardian)
+                        if public_ingress is None:
+                            await wait_fixture_relay(relay_port, guardian)
+                        else:
+                            # The hook starts before the carrier exists. Its
+                            # fresh tunnel can still be provisioning while the
+                            # gateway retries; do not apply the local-only burst
+                            # deadline to this explicitly public test path.
+                            public_deadline = min(
+                                deadline, asyncio.get_running_loop().time() + 120
+                            )
+                            async with asyncio.timeout_at(public_deadline):
+                                await wait_fixture_relay(relay_port, guardian, attempts=2400)
                         invitation = service.create_invitation(
                             lifetime=timedelta(seconds=settings.lifetime_seconds),
                             max_pairings=4,
